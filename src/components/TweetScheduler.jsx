@@ -15,10 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
-type Handle = { id: string; name: string; at: string; timezone: string };
-type Tweet = { id: string; handleId: string; text: string; mediaUrls: string[]; scheduledAt: string; status: "draft" | "scheduled" | "posted" | "failed"; tags: string[]; threadId?: string | null };
-type AnalyticsPoint = { date: string; impressions: number; engagementRate: number };
-
 const genId = () => (typeof crypto !== "undefined" && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `id-${Math.random().toString(36).slice(2)}`);
 
 const mockApi = {
