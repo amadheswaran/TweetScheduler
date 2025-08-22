@@ -15,7 +15,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
-const genId = () => (typeof crypto !== "undefined" && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `id-${Math.random().toString(36).slice(2)}`);
+const genId = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `id-${Math.random().toString(36).slice(2)}`;
+};
 
 const mockApi = {
   _user: null as null | { id: string; email: string; name: string },
