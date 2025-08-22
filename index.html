@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tweet Scheduler</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://cdn.jsdelivr.net/npm/babel-standalone@7/babel.min.js"></script>
+    <!-- FullCalendar CDNs -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6/main.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6/main.min.js"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <!-- PapaParse CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="text/babel"> const { useState, useEffect, useRef } = React; // Mock data and functions (replace with real Twitter API integration) const mockHandles = [ { id: 1, username: '@user1', avatar: 'https://via.placeholder.com/40' }, { id: 2, username: '@user2', avatar:
+        'https://via.placeholder.com/40' }, ]; const mockTweets = [ { id: 1, handleId: 1, text: 'Hello world!', media: null, scheduled: new Date('2025-08-23T10:00:00'), status: 'pending' }, ]; const mockAnalytics = { likes: 10, retweets: 5, impressions:
+        100, engagement: 15 }; // Placeholder for Twitter API function postTweet(tweet) { console.log('Posting tweet:', tweet); // Integrate with Twitter API here } function getAnalytics(postId) { return mockAnalytics; } // Header Component function Header({
+        handles, selectedHandle, setSelectedHandle, darkMode, setDarkMode }) { return (
+        <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold">Tweet Scheduler</h1>
+            <div class="flex items-center space-x-4">
+                <select value={selectedHandle ? selectedHandle.id : ''} onChange={(e)=> setSelectedHandle(handles.find(h => h.id === parseInt(e.target.value)))} class="bg-blue-700 text-white p-2 rounded" > {handles.map(handle => (
+                    <option key={handle.id} value={handle.id}>{handle.username}</option> ))} </select>
+                <button onClick={()=> setDarkMode(!darkMode)} class="bg-blue-700 p-2 rounded"> {darkMode ? 'Light Mode' : 'Dark Mode'} </button>
+                <button class="bg-blue-700 p-2 rounded">Settings</button>
+                <button class="bg-blue-700 p-2 rounded">Logout</button>
+            </div>
+        </header> ); } // Tweet Input Chat Box function TweetInput({ addTweet, selectedHandle }) { const [text, setText] = useState(''); const [media, setMedia] = useState(null); const [scheduled, setScheduled] = useState(new Date()); const charCount = text.length;
+        const color = charCount > 280 ? 'red' : charCount > 270 ? 'yellow' : 'green'; function handleSubmit() { if (charCount > 280) return; addTweet({ handleId: selectedHandle.id, text, media, scheduled }); setText(''); setMedia(null); } return (
+        <div
+        class="p-4 bg-white rounded shadow">
+            <textarea value={text} onChange={(e)=> setText(e.target.value)} class="w-full p-2 border rounded" placeholder="What's happening?" />
+                <div class="flex justify-between mt-2">
+                    <input type="file" onChange={(e)=> setMedia(e.target.files[0])} />
+                    <input type="datetime-local" value={scheduled.toISOString().slice(0,16)} onChange={(e)=> setScheduled(new Date(e.target.value))} /> <span style={{color}}>{charCount}/280</span>
+                    <button onClick={handleSubmit} class="bg-blue-500 text-white p-2 rounded">Schedule</button>
+                </div>
+                </div> ); } // CSV Upload Panel function CsvUpload({ addTweets }) { const [errors, setErrors] = useState([]); function handleUpload(e) { const file = e.target.files[0]; Papa.parse(file, { header: true, complete: (results) => { const newTweets
+                = []; const errs = []; results.data.forEach((row, i) => { if (row.Text?.length > 280) errs.push(`Row ${i+1}: Text exceeds 280 chars`); // Add more validations if (!errs.length) newTweets.push({ handleId: row.Handle, // Map properly text:
+                row.Text, media: row.MediaURL, scheduled: new Date(row.Date + ' ' + row.Time) }); }); setErrors(errs); if (!errs.length) addTweets(newTweets); } }); } return (
+                <div class="p-4 bg-white rounded shadow">
+                    <input type="file" accept=".csv" onChange={handleUpload} /> {errors.length > 0 && (
+                    <ul class="text-red-500"> {errors.map(err =>
+                        <li key={err}>{err}</li>)} </ul> )} </div> ); } // Calendar View function CalendarView({ tweets, updateTweet }) { const calendarRef = useRef(); useEffect(() => { const calendarEl = calendarRef.current; const calendar = new FullCalendar.Calendar(calendarEl,
+                { initialView: 'dayGridMonth', editable: true, events: tweets.map(tweet => ({ id: tweet.id, title: tweet.text.slice(0,20) + '...', start: tweet.scheduled, color: 'blue' // Color by handle })), eventDrop: (info) => { updateTweet(info.event.id,
+                { scheduled: info.event.start }); } }); calendar.render(); return () => calendar.destroy(); }, [tweets]); return
+                <div ref={calendarRef} class="p-4 bg-white rounded shadow" />; } // Timeline Queue function TimelineView({ tweets }) { return (
+                <div class="p-4 bg-white rounded shadow overflow-y-auto max-h-96"> {tweets.sort((a,b) => a.scheduled - b.scheduled).map(tweet => (
+                    <div key={tweet.id} class="border-b py-2">
+                        <p>{tweet.text}</p>
+                        <p class="text-sm text-gray-500">Scheduled: {tweet.scheduled.toLocaleString()}</p>
+                    </div> ))} </div> ); } // Smart Preview Panel function PreviewPanel({ tweet }) { if (!tweet) return null; return (
+                <div class="p-4 bg-white rounded shadow">
+                    <h2 class="font-bold">Preview</h2>
+                    <div class="border p-2">
+                        <p>{tweet.text}</p> {tweet.media && <img src={URL.createObjectURL(tweet.media)} alt="media" class="w-full" />} </div>
+                </div> ); } // Notifications Panel function NotificationsPanel() { // Mock notifications return (
+                <div class="p-4 bg-white rounded shadow">
+                    <h2 class="font-bold">Notifications</h2>
+                    <p>Tweet scheduled in 15 mins.
+                        <button class="text-blue-500">Approve</button>
+                    </p>
+                </div> ); } // Analytics Widget function AnalyticsWidget({ postId }) { const analytics = getAnalytics(postId); const chartRef = useRef(); useEffect(() => { const ctx = chartRef.current.getContext('2d'); new Chart(ctx, { type: 'line', data: {
+                labels: ['Impressions'], datasets: [{ label: 'Impressions', data: [analytics.impressions] }] } }); }, [analytics]); return (
+                <div class="p-4 bg-white rounded shadow">
+                    <h2 class="font-bold">Analytics</h2>
+                    <canvas ref={chartRef}></canvas>
+                    <p>Likes: {analytics.likes} | Retweets: {analytics.retweets}</p>
+                </div> ); } // Footer function Footer() { return (
+                <footer class="bg-blue-600 text-white p-4 text-center"> <a href="https://x.ai/api" class="text-white">API Docs</a> | Support | Privacy | Terms </footer> ); } // Main App function App() { const [handles, setHandles] = useState(mockHandles); const [selectedHandle, setSelectedHandle] = useState(handles[0]);
+                const [tweets, setTweets] = useState(mockTweets); const [selectedTweet, setSelectedTweet] = useState(null); const [darkMode, setDarkMode] = useState(false); function addTweet(newTweet) { setTweets([...tweets, { ...newTweet, id: tweets.length
+                + 1, status: 'pending' }]); } function addTweets(newTweets) { setTweets([...tweets, ...newTweets.map((t, i) => ({ ...t, id: tweets.length + i + 1, status: 'pending' }))]); } function updateTweet(id, updates) { setTweets(tweets.map(t =>
+                t.id === id ? { ...t, ...updates } : t)); } return (
+                <div class={`min-h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-black'}`}>
+                    <Header handles={handles} selectedHandle={selectedHandle} setSelectedHandle={setSelectedHandle} darkMode={darkMode} setDarkMode={setDarkMode} />
+                    <main class="flex-grow p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-1">
+                            <TweetInput addTweet={addTweet} selectedHandle={selectedHandle} />
+                            <CsvUpload addTweets={addTweets} /> </div>
+                        <div class="md:col-span-1">
+                            <CalendarView tweets={tweets} updateTweet={updateTweet} />
+                            <TimelineView tweets={tweets} /> </div>
+                        <div class="md:col-span-1">
+                            <PreviewPanel tweet={selectedTweet} />
+                            <NotificationsPanel />
+                            <AnalyticsWidget postId={1} /> {/* Example */} </div>
+                    </main>
+                    <Footer /> </div> ); } ReactDOM.render(
+                <App />, document.getElementById('root')); </script>
+</body>
+
+</html>
