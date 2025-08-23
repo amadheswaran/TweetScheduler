@@ -1,7 +1,7 @@
 import React from 'react'
 import TweetScheduler from './components/TweetScheduler'
 
-export default function App() {
+function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-blue-600 text-white p-4 text-xl font-semibold">
@@ -16,3 +16,5 @@ export default function App() {
     </div>
   )
 }
+
+export default App
