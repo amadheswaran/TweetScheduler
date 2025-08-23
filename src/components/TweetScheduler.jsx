@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { format, addDays, startOfWeek, isBefore, parseISO, isValid, startOfDay, setHours, setMinutes } from "date-fns";
+import { format, addDays, startOfWeek, isBefore, parseISO, isValid, startOfDay } from "date-fns";
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import Papa from "papaparse";
 import { Download, Upload, Calendar as CalendarIcon, LogIn, LogOut, UserCircle, ImageIcon, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -12,121 +11,200 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-
-const genId = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `id-${Math.random().toString(36).slice(2)}`;
-};
-
-const mockApi = {
-  _user: null,
-  _handles: [
-    { id: "h1", name: "Brand", at: "@brand", timezone: "Asia/Kolkata" },
-    { id: "h2", name: "Labs", at: "@brandlabs", timezone: "Asia/Kolkata" },
-  ],
-  _tweets: [],
-  _analytics: [],
-  async login() {
-    this._user = { id: "u1", email: "demo@example.com", name: "Demo User" };
-    return this._user;
-  },
-  async logout() {
-    this._user = null;
-    return true;
-  },
-  async me() {
-    return this._user;
-  },
-  async listHandles() {
-    return this._handles;
-  },
-  async listTweets() {
-    return this._tweets.sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  },
-  async createTweet(t) {
-    const newT = { ...t, id: genId(), status: "scheduled" };
-    this._tweets.push(newT);
-    return newT;
-  },
-  async updateTweet(id, patch) {
-    const idx = this._tweets.findIndex((t) => t.id === id);
-    if (idx !== -1) {
-      this._tweets[idx] = { ...this._tweets[idx], ...patch };
-      return this._tweets[idx];
-    }
-    throw new Error("Not found");
-  },
-  async deleteTweet(id) {
-    this._tweets = this._tweets.filter((t) => t.id !== id);
-    return true;
-  },
-  async analyticsSnapshot() {
-    if (!this._analytics.length) {
-      const today = startOfDay(new Date());
-      for (let i = 6; i >= 0; i--) {
-        const d = addDays(today, -i);
-        this._analytics.push({
-          date: d.toISOString(),
-          impressions: Math.floor(1000 + Math.random() * 4000),
-          engagementRate: parseFloat((0.01 + Math.random() * 0.05).toFixed(3)),
-        });
-      }
-    }
-    return this._analytics;
-  },
-};
+import SortableTweetItem from "./SortableTweetItem";
 
 const CHAR_LIMIT = 280;
-const isMediaUrl = (u) => /\.(png|jpe?g|gif|mp4|mov|webm)(\?.*)?$/i.test(u.trim());
 
-function validateTweetDraft(d) {
-  const issues = [];
-  if (!d.text?.trim()) issues.push("Text is required");
-  if (d.text.length > CHAR_LIMIT) issues.push(`Tweet exceeds ${CHAR_LIMIT} characters`);
-  const dt = new Date(d.scheduledAt);
-  if (!isValid(dt)) issues.push("Scheduled date is invalid");
-  if (isValid(dt) && isBefore(dt, new Date())) issues.push("Scheduled time must be in the future");
-  const imgs = d.mediaUrls.filter((m) => /\.(png|jpe?g)$/i.test(m));
-  const gifs = d.mediaUrls.filter((m) => /\.gif$/i.test(m));
-  const videos = d.mediaUrls.filter((m) => /\.(mp4|mov|webm)$/i.test(m));
-  if (gifs.length > 1) issues.push("Only one GIF allowed");
-  if (videos.length > 1) issues.push("Only one video allowed");
-  if (imgs.length > 4) issues.push("Max 4 images allowed");
-  if (gifs.length && (imgs.length || videos.length)) issues.push("GIF cannot be combined with images/videos");
-  if (videos.length && (imgs.length || gifs.length)) issues.push("Video cannot be combined with images/GIFs");
-  d.mediaUrls.forEach((u) => {
-    if (!isMediaUrl(u)) issues.push(`Invalid media URL: ${u}`);
+function TweetScheduler() {
+  const [user, setUser] = useState(null);
+  const [handles, setHandles] = useState([]);
+  const [tweets, setTweets] = useState([]);
+  const [selectedHandle, setSelectedHandle] = useState(null);
+  const [draft, setDraft] = useState({
+    text: "",
+    scheduledAt: "",
+    mediaUrls: [],
+    tags: [],
   });
-  return issues;
-}
+  const [analytics, setAnalytics] = useState([]);
+  const { toast } = useToast();
+  const fileInputRef = useRef(null);
 
-function SortableTweetItem({ tweet, onDelete }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: tweet.id });
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const sensors = useSensors(useSensor(MouseSensor), useSensor(TouchSensor));
+
+  useEffect(() => {
+    mockApi.me().then((u) => setUser(u));
+    mockApi.listHandles().then(setHandles);
+    refreshTweets();
+    mockApi.analyticsSnapshot().then(setAnalytics);
+  }, []);
+
+  async function refreshTweets() {
+    const list = await mockApi.listTweets();
+    setTweets(list);
+  }
+
+  async function handleLogin() {
+    const u = await mockApi.login();
+    setUser(u);
+  }
+
+  async function handleLogout() {
+    await mockApi.logout();
+    setUser(null);
+  }
+
+  async function handleCreateTweet() {
+    const issues = validateTweetDraft(draft);
+    if (issues.length) {
+      toast({ title: "Validation errors", description: issues.join(", "), variant: "destructive" });
+      return;
+    }
+    const t = await mockApi.createTweet({ ...draft, handleId: selectedHandle });
+    setTweets([...tweets, t]);
+    setDraft({ text: "", scheduledAt: "", mediaUrls: [], tags: [] });
+  }
+
+  async function handleDeleteTweet(id) {
+    await mockApi.deleteTweet(id);
+    setTweets(tweets.filter((t) => t.id !== id));
+  }
+
+  function handleImportCSV(file) {
+    Papa.parse(file, {
+      header: true,
+      complete: async (results) => {
+        for (const row of results.data) {
+          if (!row.text || !row.scheduledAt) continue;
+          try {
+            const t = await mockApi.createTweet({
+              text: row.text,
+              scheduledAt: row.scheduledAt,
+              mediaUrls: row.mediaUrls ? row.mediaUrls.split(";") : [],
+              tags: row.tags ? row.tags.split(",") : [],
+              handleId: selectedHandle,
+            });
+            setTweets((prev) => [...prev, t]);
+          } catch (e) {
+            console.error("Import error", e);
+          }
+        }
+      },
+    });
+  }
+
+  function handleExportCSV() {
+    const csv = Papa.unparse(tweets);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tweets.csv";
+    a.click();
+  }
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-start gap-3 p-3 border rounded-2xl bg-white shadow-sm">
-      <div className="mt-1"><CalendarIcon className="w-4 h-4" /></div>
-      <div className="flex-1">
-        <div className="text-sm text-gray-500">{format(parseISO(tweet.scheduledAt), "EEE, dd MMM • HH:mm")}</div>
-        <div className="font-medium whitespace-pre-wrap">{tweet.text}</div>
-        <div className="flex gap-2 mt-2 flex-wrap">
-          {tweet.mediaUrls.map((m) => (
-            <Badge key={m} variant="secondary" className="flex items-center gap-1"><ImageIcon className="w-3 h-3" />{m.split("/").pop()}</Badge>
-          ))}
-        </div>
-        <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
-          <span>Status: {tweet.status}</span>
-          <span>Tags: {tweet.tags.join(", ") || "—"}</span>
-        </div>
-      </div>
-      <Button variant="ghost" onClick={() => onDelete(tweet.id)}>Delete</Button>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <Card>
+        <CardHeader className="flex justify-between items-center">
+          <CardTitle className="text-xl font-bold flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5" /> Tweet Scheduler
+          </CardTitle>
+          <div className="flex items-center gap-3">
+            {user ? (
+              <>
+                <span className="flex items-center gap-1 text-sm text-gray-600">
+                  <UserCircle className="w-4 h-4" /> {user.email}
+                </span>
+                <Button size="sm" onClick={handleLogout}><LogOut className="w-4 h-4 mr-1" /> Logout</Button>
+              </>
+            ) : (
+              <Button size="sm" onClick={handleLogin}><LogIn className="w-4 h-4 mr-1" /> Login</Button>
+            )}
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Draft Tweet */}
+      <Card>
+        <CardHeader><CardTitle>New Tweet</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Handle</Label>
+            <Select value={selectedHandle || ""} onValueChange={setSelectedHandle}>
+              <SelectTrigger><SelectValue placeholder="Select handle" /></SelectTrigger>
+              <SelectContent>
+                {handles.map((h) => (
+                  <SelectItem key={h.id} value={h.id}>{h.name} ({h.at})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Text</Label>
+            <Textarea value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+            <div className={`text-sm ${draft.text.length > CHAR_LIMIT ? "text-red-500" : "text-gray-500"}`}>
+              {draft.text.length}/{CHAR_LIMIT}
+            </div>
+          </div>
+          <div>
+            <Label>Scheduled At</Label>
+            <Input type="datetime-local" value={draft.scheduledAt} onChange={(e) => setDraft({ ...draft, scheduledAt: e.target.value })} />
+          </div>
+          <div>
+            <Label>Media URLs (comma separated)</Label>
+            <Input value={draft.mediaUrls.join(",")} onChange={(e) => setDraft({ ...draft, mediaUrls: e.target.value.split(",") })} />
+          </div>
+          <div>
+            <Label>Tags (comma separated)</Label>
+            <Input value={draft.tags.join(",")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",") })} />
+          </div>
+          <Button onClick={handleCreateTweet}>Schedule Tweet</Button>
+        </CardContent>
+      </Card>
+
+      {/* Tweets List */}
+      <Card>
+        <CardHeader className="flex justify-between items-center">
+          <CardTitle>Scheduled Tweets</CardTitle>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={handleExportCSV}><Download className="w-4 h-4 mr-1" /> Export</Button>
+            <Button size="sm" variant="outline" onClick={() => fileInputRef.current.click()}><Upload className="w-4 h-4 mr-1" /> Import</Button>
+            <input ref={fileInputRef} type="file" accept=".csv" hidden onChange={(e) => e.target.files.length && handleImportCSV(e.target.files[0])} />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <DndContext sensors={sensors}>
+            <SortableContext items={tweets.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {tweets.map((t) => (
+                  <SortableTweetItem key={t.id} tweet={t} onDelete={handleDeleteTweet} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </CardContent>
+      </Card>
+
+      {/* Analytics */}
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="w-5 h-5" /> Analytics</CardTitle></CardHeader>
+        <CardContent style={{ height: 300 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={analytics}>
+              <XAxis dataKey="date" tickFormatter={(d) => format(parseISO(d), "EEE")} />
+              <YAxis />
+              <Tooltip formatter={(value) => value.toFixed ? value.toFixed(2) : value} />
+              <Line type="monotone" dataKey="impressions" stroke="#8884d8" />
+              <Line type="monotone" dataKey="engagementRate" stroke="#82ca9d" />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-// … keep going with the rest of your code rewritten to remove all `: Type`, `as`, `Omit<>`, etc.
-
+export default TweetScheduler;
