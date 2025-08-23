@@ -1,60 +1,60 @@
-// src/utils/mockApi.js
-
-// simple in-memory "DB"
-let user = { id: 1, email: "demo@example.com" };
+let user = { id: 1, email: "demo@example.com", name: "Demo User" };
 let handles = [
   { id: "h1", name: "Demo Account", at: "@demo" },
-  { id: "h2", name: "Marketing Bot", at: "@marketing" },
+  { id: "h2", name: "Marketing", at: "@marketing" },
 ];
 let tweets = [
   {
     id: "t1",
     handleId: "h1",
     text: "Welcome to Tweet Scheduler 🚀",
-    scheduledAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-  },
+    mediaUrls: [],
+    tags: ["welcome"],
+    scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    status: "scheduled"
+  }
 ];
-let analytics = [
-  { date: "2025-08-20", tweets: 3 },
-  { date: "2025-08-21", tweets: 5 },
-  { date: "2025-08-22", tweets: 2 },
-];
+let analytics = Array.from({ length: 7 }).map((_, i) => {
+  const d = new Date();
+  d.setDate(d.getDate() - (6 - i));
+  return {
+    date: d.toISOString(),
+    impressions: Math.floor(700 + Math.random() * 1700),
+    engagementRate: +(0.01 + Math.random() * 0.04).toFixed(3),
+  };
+});
+
+const genId = () => `id_${Math.random().toString(36).slice(2, 9)}`;
 
 export const mockApi = {
-  // --- Auth ---
-  me: async () => {
-    return user; // simulate logged-in user
-  },
-  login: async (email, password) => {
-    user = { id: Date.now(), email };
-    return user;
-  },
-  logout: async () => {
-    user = null;
-    return true;
+  me: async () => user,
+  login: async () => user,
+  logout: async () => { user = null; return true; },
+
+  listHandles: async () => handles,
+
+  listTweets: async () =>
+    tweets.slice().sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
+
+  createTweet: async (t) => {
+    const nt = { ...t, id: genId(), status: "scheduled" };
+    tweets.push(nt);
+    return nt;
   },
 
-  // --- Handles ---
-  listHandles: async () => {
-    return handles;
-  },
-
-  // --- Tweets ---
-  listTweets: async () => {
-    return tweets;
-  },
-  createTweet: async (tweet) => {
-    const newTweet = { id: Date.now().toString(), ...tweet };
-    tweets.push(newTweet);
-    return newTweet;
-  },
   deleteTweet: async (id) => {
-    tweets = tweets.filter((t) => t.id !== id);
+    tweets = tweets.filter(t => t.id !== id);
     return true;
   },
 
-  // --- Analytics ---
-  analyticsSnapshot: async () => {
-    return analytics;
+  updateTweet: async (id, patch) => {
+    const i = tweets.findIndex(t => t.id === id);
+    if (i >= 0) {
+      tweets[i] = { ...tweets[i], ...patch };
+      return tweets[i];
+    }
+    throw new Error("Not found");
   },
+
+  analyticsSnapshot: async () => analytics
 };
