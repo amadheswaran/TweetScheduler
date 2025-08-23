@@ -7,6 +7,18 @@
   </head>
   <body class="bg-gray-50">
     <div id="root"></div>
-    <script type="module" src="/main.jsx"></script>
+
+    <script>
+      console.log('[index.html] loaded', new Date().toISOString());
+      window.addEventListener('error', (e) => {
+        console.log('[window.error]', e.message, e.filename, e.lineno, e.colno);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        console.log('[unhandledrejection]', e.reason);
+      });
+    </script>
+
+    <!-- IMPORTANT: relative path so Vite rewrites it in build -->
+    <script type="module" src="./main.jsx"></script>
   </body>
 </html>
